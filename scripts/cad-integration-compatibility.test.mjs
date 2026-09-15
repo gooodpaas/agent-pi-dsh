@@ -103,6 +103,26 @@ test('permits only the Office notice section to change while retaining all CAD n
   assert.throws(() => assertCadIntegrationUnchanged(value), /CAD inputs changed.*THIRD_PARTY_NOTICES/)
 })
 
+test('permits one report-skill notice without permitting CAD notice changes or duplicate sections', (t) => {
+  const value = fixture(t)
+  const path = join(value.root, 'THIRD_PARTY_NOTICES.md')
+  const before = '# Notices\n\n## dsh-univer-office integration\n\nOffice terms.\n\n## CAD\n\nOriginal CAD terms.\n'
+  write(path, before)
+  const source = value.manifest.sources.agentPiDshCadIntegration
+  source.commit = commit(value.root)
+  source.tree = git(value.root, 'rev-parse', 'HEAD^{tree}')
+  const report = '## huashu-report\n\nMIT report skill, independent of CAD.\n\n'
+  const after = before.replace('## dsh-univer-office', report + '## dsh-univer-office')
+  write(path, after)
+  commit(value.root)
+  assert.equal(assertCadIntegrationUnchanged(value).sourceCommit, source.commit)
+  for (const invalid of [after.replace('Original CAD terms.', 'Changed CAD terms.'), after + '\n' + report]) {
+    write(path, invalid)
+    commit(value.root)
+    assert.throws(() => assertCadIntegrationUnchanged(value), /CAD inputs changed.*THIRD_PARTY_NOTICES/)
+  }
+})
+
 for (const input of CAD_INPUT_PATHS) {
   test(`rejects a committed CAD input change: ${input}`, (t) => {
     const value = fixture(t)

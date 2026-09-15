@@ -51,10 +51,12 @@ function inputTree(root, commit) {
   return entries
 }
 
-function noticesOutsideOffice(text) {
+function noticesOutsideNonCadSections(text) {
   const section = /^## (?:Optional )?dsh-univer-office integration\r?\n(?:(?!^## )[\s\S])*/gm
   if ([...text.matchAll(section)].length !== 1) return null
-  return text.replace(section, '')
+  const report = /^## huashu-report\r?\n(?:(?!^## )[\s\S])*/gm
+  if ([...text.matchAll(report)].length > 1) return null
+  return text.replace(section, '').replace(report, '')
 }
 
 // Call after verifyCadCleanRelease: this supplements, never replaces, archive,
@@ -90,12 +92,12 @@ export function assertCadIntegrationUnchanged({ root, manifest, releaseCommit = 
         if (JSON.parse(after).version !== pkg.version
             && after.replace(/("version"\s*:\s*")[^"]+"/, `$1${pkg.version}"`) === originalPackage) return false
       }
-      // Office notices do not enter the CAD build. All other notices and the
+      // Office and report-skill notices do not enter the CAD build. Other notices and the
       // file's mode/type remain bound to the original corresponding source.
       if (path === 'THIRD_PARTY_NOTICES.md'
           && original.get(path)?.split(' ').slice(0, 2).join(' ') === current.get(path)?.split(' ').slice(0, 2).join(' ')) {
-        const before = noticesOutsideOffice(git(root, ['show', `${source.commit}:${path}`]))
-        const after = noticesOutsideOffice(git(root, ['show', `${target}:${path}`]))
+        const before = noticesOutsideNonCadSections(git(root, ['show', `${source.commit}:${path}`]))
+        const after = noticesOutsideNonCadSections(git(root, ['show', `${target}:${path}`]))
         if (before !== null && before === after) return false
       }
       return true
