@@ -1,5 +1,17 @@
 # Third-party notices
 
+## huashu-report
+
+Source: https://github.com/alchaincyf/huashu-report
+Pinned commit: `bdc08bee5077462e1300431408c5237438a22d00`.
+Copyright (c) 2026 alchaincyf. MIT License; the full notice is retained in
+`skills/huashu-report/LICENSE` with the upstream references, assets and corpus.
+Agent Pi adds `AGENT-PI-ADAPTATION.md`, a pointer in `SKILL.md`, and
+`assets/check_runtime.py`; `assets/render.py` is modified for Windows file URLs,
+explicit UTF-8 and subprocess failure reporting. `assets/chart.py` handles
+all-zero and all-negative paired bar data. These additions do not change
+the upstream MIT terms or the application's GPL-3.0-only distribution license.
+
 ## Agent Pi business core package
 
 `@agent-pi/business-core` 2.2.4 is a locally developed Agent Pi component in

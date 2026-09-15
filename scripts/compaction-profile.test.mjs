@@ -36,6 +36,7 @@ const scriptNames = [
   'univer-profile-migration.mjs',
   'univer-skill-sync.mjs',
   'migrate-legacy-agent-preset-sessions.mjs',
+  'repair-professional-depth-sessions.mjs',
   'enable-desktop-web-fetch.mjs',
   'enable-desktop-codex.mjs',
   'enable-desktop-compaction.mjs',
@@ -77,6 +78,7 @@ function createFixture(t) {
   )
 
   writePackage(root, 'bundles/tender-host', 'dsh-tender-host')
+  writeFixtureFile(join(root, 'bundles/tender-host/src/professional-depth-store.mjs'), readFileSync(join(sourceRoot, 'bundles/tender-host/src/professional-depth-store.mjs')))
   writePackage(root, 'bundles/tender-web', 'dsh-tender-web')
   writePackage(root, 'vendor/dsh-super-injector', '@dsh-external/dsh-super-injector', { lib: true })
   writePackage(root, 'vendor/dshmarket', 'dshmarket')

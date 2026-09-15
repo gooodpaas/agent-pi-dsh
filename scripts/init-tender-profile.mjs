@@ -17,6 +17,7 @@ import { spawnSync } from 'node:child_process'
 import { repairDeepSeekModelCapacities, ensureDeepSeekOfficialModel, migrateDeepSeekDefault } from './deepseek-model-capacities.mjs'
 import { removeProductParallelCap } from './heal-agent-loop-settings.mjs'
 import { migrateLegacyAgentPresetSessions } from './migrate-legacy-agent-preset-sessions.mjs'
+import { repairProfessionalDepthSessions } from './repair-professional-depth-sessions.mjs'
 import {
   removeMissingProductUniverDependency,
   UNIVER_OFFICE_NAME,
@@ -311,6 +312,14 @@ function buildManagedPatch(deps) {
 
 # Model catalog and default selection come directly from the official dsh-base.
 # Do not shadow upstream multimodal capabilities with a product catalog.
+
+# Extra provider metadata is opt-in for professional workspaces.
+- id: session-log-deepseek
+  config:
+    enabled: false
+- id: plugin-package-inventory-deepseek
+  config:
+    enabled: false
 
 # Keep one file-management entry: Agent Pi owns outputs, uploads and KB actions.
 # Native document previews and delivery cards stay enabled.
@@ -751,6 +760,8 @@ syncManagedUniverSkills({
 repairExistingDeepSeekModelCapacities()
 repairLegacyAgentPresetDefault()
 const legacyPresetMigration = migrateLegacyAgentPresetSessions(home)
+const depthRepair = repairProfessionalDepthSessions(home)
+if (depthRepair.repaired || depthRepair.errors.length) process.stdout.write(`professional depth session repair: ${JSON.stringify(depthRepair)}\n`)
 if (!legacyPresetMigration.skipped && (legacyPresetMigration.migrated > 0 || legacyPresetMigration.errors > 0)) {
   process.stdout.write(`legacy Agent preset sessions: ${JSON.stringify(legacyPresetMigration)}\n`)
 }

@@ -5,8 +5,7 @@ export const TEAM_BUNDLES = TEAM_PACKAGES.slice(0, 2).map(name => `@deepseek-ai/
 // legacy controls, so apply the same composition there when Teams is enabled.
 export function configureTeamPreset(text) {
   const newline = text.includes('\r\n') ? '\r\n' : '\n'
-  return text.replaceAll('\r\n', '\n').replace(/(^([ \t]*)- id: (tool-subagent-control|tool-subagent-list-agents)\r?\n)([\s\S]*?)(?=^\2- id:|^\S|(?![\s\S]))/gm,
+  return text.replaceAll('\r\n', '\n').replace(/(^([ \t]*)- id: (tool-subagent-control|tool-subagent-list-agents|tool-subagent|tool-subagent-fork)\r?\n)([\s\S]*?)(?=^\2- id:|^\S|(?![\s\S]))/gm,
     (block, header, indent, _id, body) => header + body.replace(/^([ \t]*)disabled:.*\r?\n/gm, '') + `${indent}  disabled: true\n`)
-    .replace(/(^[ \t]*- id: tool-subagent(?:-fork)?\r?\n[\s\S]*?backgroundMode: )continuable/gm, '$1one-shot')
     .replaceAll('\n', newline)
 }

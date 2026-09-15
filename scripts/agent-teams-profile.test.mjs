@@ -15,11 +15,11 @@ test('team preference is opt-in and accepts only booleans', () => {
 test('team preset disables scoped legacy controls and preserves independent Codex execution', () => {
   const source = readFileSync(new URL('../vendor/dsh-router-standard/preset/agent.cordis.yml', import.meta.url), 'utf8')
   const next = configureTeamPreset(source)
-  for (const id of ['tool-subagent-control', 'tool-subagent-list-agents']) {
+  for (const id of ['tool-subagent-control', 'tool-subagent-list-agents', 'tool-subagent', 'tool-subagent-fork']) {
     const row = next.replaceAll('\r\n', '\n').split(`- id: ${id}\n`)[1]?.split(/\n\s*- id:/)[0]
     assert.match(row || '', /disabled: true/)
   }
-  assert.equal((next.match(/backgroundMode: one-shot/g) || []).length, 2)
+  assert.equal((next.match(/backgroundMode: continuable/g) || []).length, (source.match(/backgroundMode: continuable/g) || []).length)
   assert.equal(next.slice(next.indexOf('    - id: tool-subagent-codex')), source.slice(source.indexOf('    - id: tool-subagent-codex')))
   assert.equal(configureTeamPreset(next), next)
 })

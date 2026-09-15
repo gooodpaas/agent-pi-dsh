@@ -7,6 +7,7 @@ import { repairKimiCodingSettings, migrateRetiredDeepSeekSession } from './llm-s
 import type { LlmStreamRuntime } from './prompt-optimize.ts'
 import { registerBusinessActivation } from './business-activation.ts'
 import { registerProfessionalDepth } from './professional-depth.ts'
+import { registerReportSkillRouting } from './report-skill.ts'
 
 /**
  * Packaged Electron often hands the host a PATH that has System32 but not
@@ -58,6 +59,7 @@ export function apply(ctx: {
   registerTools({ tools: ctx.tools }, defineTool)
   registerBusinessActivation(ctx as Parameters<typeof registerBusinessActivation>[0])
   registerProfessionalDepth(ctx, defineTool)
+  registerReportSkillRouting(ctx)
   ctx.inject(['webServer'], (inner) => {
     attachHttp({
       webServer: inner.webServer,

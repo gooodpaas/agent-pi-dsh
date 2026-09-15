@@ -6,8 +6,18 @@ const fields = [
   ['acceptance', '验收口径', '怎样判断任务已满足实际使用需求'],
 ]
 const kinds = [['review', '专业审阅'], ['file', '文件与格式'], ['contains', '包含指定内容'], ['json', '有效 JSON']]
+const pendingModes = new WeakMap()
 
-export function createProfessionalDepth({ React, api, fillDraft, run, subscribe }) {
+// The switch is composer state, never a synthetic task. Materialize it only
+// after the user submits actual text or an attachment through the native input.
+export function prepareDepthSubmission(composer, draft, hasAttachments) {
+  const pending = composer.inputActions && pendingModes.get(composer.inputActions)
+  if (!pending || composer.sessionId || (!draft.trim() && !hasAttachments)) return draft
+  pendingModes.delete(composer.inputActions)
+  return `启用专业深度。\n${draft}${pending.template ? `\n\n我主动选用以下模板作为参考，当前需求优先，模板中的旧事实不代表本次事实：\n<reference-template>\n${pending.template.content}\n</reference-template>` : ''}`
+}
+
+export function createProfessionalDepth({ React, api, run, subscribe }) {
   const h = React.createElement
   return function ProfessionalDepth({ composer }) {
     const id = composer.sessionId || ''
@@ -16,6 +26,16 @@ export function createProfessionalDepth({ React, api, fillDraft, run, subscribe 
     const [open, setOpen] = React.useState(false)
     const [busy, setBusy] = React.useState(false)
     const [error, setError] = React.useState('')
+    const [draftEnabled, setDraftEnabled] = React.useState(false)
+    const [templates, setTemplates] = React.useState([])
+    const [template, setTemplate] = React.useState(null)
+    const [templateEdit, setTemplateEdit] = React.useState(null)
+    const [savedPath, setSavedPath] = React.useState('')
+    const templateRequest = (suffix = '', body) => api(`/api/agent-pi/professional-depth/templates${suffix}`, composer.cwd,
+      body ? { method: 'POST', body: JSON.stringify(body) } : undefined)
+    React.useEffect(() => () => {
+      if (composer.inputActions) pendingModes.delete(composer.inputActions)
+    }, [composer.inputActions])
     const url = `/api/agent-pi/professional-depth?sessionId=${encodeURIComponent(id)}`
     const request = (body) => api(url, composer.cwd, body ? { method: 'POST', body: JSON.stringify(body) } : undefined)
     React.useEffect(() => {
@@ -43,24 +63,22 @@ export function createProfessionalDepth({ React, api, fillDraft, run, subscribe 
     }
     const show = () => {
       setOpen(true); setEdit(null); setError('')
+      templateRequest().then(setTemplates).catch((err) => setError(String(err.message || err)))
       if (id) perform(async () => { setState(await request()) })
     }
-    const draftEnabled = !id && /^启用专业深度。\n/.test(composer.input?.draft || '')
-    const enabled = state?.enabled || draftEnabled
+    const enabled = id ? !!state?.enabled : draftEnabled
     const toggle = () => perform(async () => {
       if (!id) {
-        const draft = composer.input?.draft || ''
-        fillDraft(composer, draftEnabled ? draft.replace(/^启用专业深度。\n/, '') : `启用专业深度。\n${draft}`)
-        setOpen(false)
+        if (composer.inputActions) {
+          if (draftEnabled) pendingModes.delete(composer.inputActions)
+          else pendingModes.set(composer.inputActions, { template })
+        }
+        setDraftEnabled(!draftEnabled)
         return
       }
       const latest = await request()
       const value = await request({ action: 'toggle', enabled: !latest.enabled, revision: latest.revision })
       setState(value); setEdit(null)
-      if (value.enabled) {
-        setOpen(false)
-        run(composer, '请按专业深度研判当前任务：结合已有对话整理任务说明和验收要求，然后继续完成。')
-      }
     })
     const save = (continueTask) => perform(async () => {
       const value = await request({ action: 'brief', revision: edit.revision, brief: edit.brief, criteria: edit.criteria })
@@ -71,6 +89,23 @@ export function createProfessionalDepth({ React, api, fillDraft, run, subscribe 
       }
     })
     const updateField = (field, value) => setEdit((current) => ({ ...current, brief: { ...current.brief, [field]: value } }))
+    const selectTemplate = (templateId) => perform(async () => {
+      const selected = templateId ? await templateRequest(`?id=${encodeURIComponent(templateId)}`) : null
+      if (id) {
+        const latest = await request()
+        setState(await request({ action: 'template', revision: latest.revision, template: selected }))
+      } else if (composer.inputActions) pendingModes.set(composer.inputActions, { template: selected })
+      setTemplate(selected)
+    })
+    const startTemplate = () => {
+      setSavedPath('')
+      setTemplateEdit({ title: '', content: `## 触发场景\n描述适用的工作类型，去掉本项目名称和具体事实。\n\n## 需求澄清清单\n只列无法从任务推断、且会改变结果的关键问题。\n\n## 标准做法\n${state?.brief?.depth || '填写可复用的工作步骤。'}\n\n## 禁区\n填写应保留的边界，不携带凭据或项目敏感资料。\n\n## 提示词模板\n围绕实际用途完成任务；事实、资料和参数以本次输入为准。\n\n## 验收标准\n${state?.brief?.acceptance || '填写可检查的交付要求。'}` })
+    }
+    const saveTemplate = () => perform(async () => {
+      const saved = await templateRequest('', templateEdit)
+      setSavedPath(saved.path); setTemplateEdit(null)
+      setTemplates(await templateRequest())
+    })
     const updateCriterion = (index, patch) => setEdit((current) => ({ ...current, criteria: current.criteria.map((row, i) => i === index ? { ...row, ...patch } : row) }))
     const shown = edit || state
     return h(React.Fragment, null,
@@ -81,11 +116,26 @@ export function createProfessionalDepth({ React, api, fillDraft, run, subscribe 
           h('h2', null, '专业深度'),
           h('p', { className: 'ap-sub' }, '围绕实际用途、专业依据和交付要求，继续在当前 DSH 对话中完成任务。只使用你在本对话选定的知识库资料。'),
           h('div', { className: 'ap-row ap-depth-actions' },
-            h('span', { className: 'ap-depth-status', role: 'status' }, draftEnabled ? '发送任务后启用' : enabled ? (state.needsAssessment ? '待研判最新要求' : `任务说明 · 第 ${state.revision} 版`) : '默认关闭'),
-            h('button', { type: 'button', disabled: busy || !!edit, onClick: toggle }, enabled ? '关闭专业深度' : id ? '启用并开始研判' : '加入当前任务'),
+            h('span', { className: 'ap-depth-status', role: 'status' }, enabled ? (!id || state?.needsAssessment ? '已启用 · 等待你的任务输入' : `任务说明 · 第 ${state.revision} 版`) : '默认关闭'),
+            h('button', { type: 'button', disabled: busy || !!edit, onClick: toggle }, enabled ? '关闭专业深度' : '启用专业深度'),
             state?.enabled && !edit && h('button', { type: 'button', disabled: busy, onClick: () => setEdit(structuredClone(state)) }, '编辑任务说明'),
           ),
-          !id && h('p', { className: 'ap-sub' }, '先在输入框描述工作需求。加入专业深度后，发送任务即可自动研判；新对话不会继承此模式。'),
+          h('p', { className: 'ap-sub' }, '开启只保存选择，不发送消息。输入并发送实际任务后，明确需求直接执行，关键目标不清楚时再集中询问；新对话默认关闭。'),
+          h('div', { className: 'ap-depth-templates' },
+            h('h3', null, '可复用模板'),
+            h('p', { className: 'ap-sub' }, '由你主动保存、选用。不会自动保存经验、扫描项目或向新对话加载模板。保存前请去掉本次项目事实。'),
+            h('select', { 'aria-label': '选用专业深度模板', disabled: busy || !enabled, value: (id ? state?.template?.id : template?.id) || '', onChange: (e) => selectTemplate(e.target.value) },
+              h('option', { value: '' }, '不使用模板'), templates.map((item) => h('option', { key: item.id, value: item.id }, item.title))),
+            h('button', { type: 'button', disabled: busy, onClick: startTemplate }, '整理并保存为模板'),
+            (id ? state?.template : template) && h('details', null, h('summary', null, '查看已选模板'), h('pre', { className: 'ap-depth-notes' }, (id ? state.template : template).content)),
+            templateEdit && h('div', { className: 'ap-depth-template-edit' },
+              h('input', { 'aria-label': '模板名称', placeholder: '例如：施工方案审阅', value: templateEdit.title, maxLength: 120, onChange: (e) => setTemplateEdit((value) => ({ ...value, title: e.target.value })) }),
+              h('textarea', { 'aria-label': '模板内容', rows: 12, maxLength: 24000, value: templateEdit.content, onChange: (e) => setTemplateEdit((value) => ({ ...value, content: e.target.value })) }),
+              h('button', { type: 'button', disabled: busy || !templateEdit.title.trim(), onClick: saveTemplate }, '保存模板'),
+              h('button', { type: 'button', onClick: () => setTemplateEdit(null) }, '取消'),
+            ),
+            savedPath && h('p', { role: 'status', className: 'ap-depth-notes' }, `已保存 Markdown 模板：${savedPath}。本次未自动选用。`),
+          ),
           error && h('p', { role: 'alert', className: 'ap-depth-error' }, error, ' ', h('button', { type: 'button', onClick: () => perform(async () => { setState(await request()); setEdit(null) }) }, '载入最新版本')),
           shown && h('div', { className: 'ap-depth-fields' }, fields.map(([field, label, placeholder]) =>
             h('label', { key: field }, h('strong', null, label), edit
@@ -131,6 +181,7 @@ export const professionalDepthCss = `
 .ap-depth-fields strong{display:block;margin-bottom:6px}.ap-depth-fields p,.ap-depth-notes{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6}
 .ap-depth-modal button:not(.ap-close){border:1px solid var(--border,#d7dce2);border-radius:8px;padding:7px 12px;background:var(--background,#fff);color:inherit;font:inherit;cursor:pointer}.ap-depth-modal button:disabled{opacity:.5;cursor:default}
 .ap-depth-fields textarea,.ap-depth-criterion input,.ap-depth-criterion select{width:100%;box-sizing:border-box;padding:9px;border:1px solid var(--border,#ddd);border-radius:8px;background:var(--background,#fff);color:inherit;font:inherit}
+.ap-depth-template-edit input,.ap-depth-template-edit textarea{width:100%;box-sizing:border-box;margin:8px 0;padding:9px;background:var(--background,#fff);color:inherit;border:1px solid var(--border,#ddd);border-radius:8px;font:inherit}.ap-depth-templates select{max-width:100%;padding:7px;margin-right:10px;background:var(--background,#fff);color:inherit;border:1px solid var(--border,#ddd);border-radius:8px}.ap-depth-templates pre{font:inherit}
 .ap-depth-actions{flex-wrap:wrap;gap:10px;margin:14px 0}.ap-depth-criterion{padding:12px 0;border-top:1px solid var(--border,#ddd);display:flex;flex-wrap:wrap;gap:8px}.ap-depth-criterion p{width:100%;margin:0}.ap-depth-check{font-size:12px;border-radius:5px;padding:3px 7px;background:#edf3f4}.ap-depth-check.failed,.ap-depth-error{color:#b42318}.ap-depth-check.passed{color:#166534}.ap-depth-check.review{color:#825600}.ap-depth-status{margin-right:auto}
 @media(max-width:600px){.ap-depth-fields{grid-template-columns:1fr}.ap-depth-modal{padding:20px}}
 `

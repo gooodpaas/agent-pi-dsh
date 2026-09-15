@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { admitDepthMessages, checkDepth, depthCommand, depthContext, depthState, registerProfessionalDepth, updateDepth } from '../src/professional-depth.ts'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { admitDepthMessages, bindDepthStore, checkDepth, depthCommand, depthContext, depthState, registerProfessionalDepth, updateDepth } from '../src/professional-depth.ts'
+import { createDepthStore } from '../src/professional-depth-store.mjs'
 import { zipStore } from '../src/xlsx-zip.ts'
 
 function session(id = 'one', inherited: any[] = []) {
@@ -35,7 +39,8 @@ test('ordinary conversations have no prompt, state inheritance or enable permiss
   const parent = enabled()
   assess(parent, [{ id: 'quality', title: '责任分工适用', kind: 'review' }])
   assert.equal(depthState(session('child', parent.snapshotEvents())).enabled, false)
-  assert.deepEqual(depthState(session('one', parent.snapshotEvents())), depthState(parent))
+  assert.equal(parent.snapshotEvents().length, 0, 'product preferences never enter canonical session events')
+  assert.equal(depthState(session('one', parent.snapshotEvents())).enabled, false)
 })
 
 test('only direct explicit user commands change mode; mentions, negation and untrusted content do not', () => {
@@ -121,7 +126,11 @@ test('outer PTC completion rechecks bytes and clears stale review notes after a 
   assert.equal(depthState(s).reviewNotes, '')
 })
 
-test('native inbox activation exposes tools before prompt assembly', async () => {
+test('native inbox activation exposes tools before prompt assembly', async (t) => {
+  const home = mkdtempSync(join(tmpdir(), 'depth-hook-'))
+  const previous = process.env.DSH_HOME
+  process.env.DSH_HOME = home
+  t.after(() => { if (previous === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = previous; rmSync(home, { recursive: true, force: true }) })
   const listeners = new Map<string, any>()
   let definition: any
   let denied = false
@@ -133,5 +142,26 @@ test('native inbox activation exposes tools before prompt assembly', async () =>
   listeners.get('agent/inbox/claimed')({ agent, message: user('启用专业深度。制定计划') })
   assert.equal(denied, false)
   assert.equal((await definition.execute({ action: 'status' }, { agent })).enabled, true)
-  assert.match(depthContext(s), /真实用户需求/)
+  assert.match(depthContext(s), /真实需求/)
+})
+
+test('preferences restore only the same session; templates require manual selection', (t) => {
+  const home = mkdtempSync(join(tmpdir(), 'depth-store-'))
+  t.after(() => rmSync(home, { recursive: true, force: true }))
+  const store = createDepthStore(home)
+  const s = session()
+  bindDepthStore(s, store)
+  updateDepth(s, { action: 'toggle', enabled: true, revision: 0 }, 'user')
+  assert.throws(() => updateDepth(s, { action: 'template', template: {}, revision: 1 }, 'agent'), /用户主动/)
+  updateDepth(s, { action: 'template', template: { id: 'template-one', title: '周报', content: '只用当前事实' }, revision: 1 }, 'user')
+  const reopened = session()
+  bindDepthStore(reopened, store)
+  assert.deepEqual(depthState(reopened), depthState(s))
+  const child = session('child')
+  bindDepthStore(child, store)
+  assert.equal(depthState(child).enabled, false)
+  assert.equal(depthState(child).template, undefined)
+  updateDepth(reopened, { action: 'template', template: null, revision: 2 }, 'user')
+  assert.equal(depthState(reopened).template, undefined)
+  assert.equal(s.snapshotEvents().length, 0)
 })

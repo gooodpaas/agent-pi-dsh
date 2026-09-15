@@ -9,7 +9,7 @@ import { addNativeComposerFiles } from './native-attachment-adapter.js'
 import { createWorkbenchSessionMonitor } from './session-monitor.js'
 import { createWorkbenchView } from './workbench-view.js'
 import { clientCss } from './styles.js'
-import { createProfessionalDepth, professionalDepthCss } from './professional-depth.js'
+import { createProfessionalDepth, professionalDepthCss, prepareDepthSubmission } from './professional-depth.js'
 import { createTaskProcess, taskProcessCss } from './task-process.js'
 import { installNativeWorkFilePreviews, nativeWorkFilePreviewCss } from './native-work-file-preview.js'
 import { buildCodexTurnDelegation, codexTurnModel, codexSupportsEffort, resolveCodexTurnSelection } from '../codex-turn.ts'
@@ -4265,6 +4265,12 @@ const AgentTeamsSettings = createAgentTeamsSettings(React)
       actions.submit = () => {
         const live = actions.__apLatestProps || props
         const before = currentDraft(live)
+        const depthDraft = prepareDepthSubmission(live, before, nativeCodexAttachmentIds(live.input).length > 0 || codexAttachItems(attachmentTurnKey(live)).length > 0)
+        if (depthDraft !== before) {
+          fillComposer(live, depthDraft)
+          requestAnimationFrame(() => actions.submit())
+          return
+        }
         if (codexTurnArmed(live)) {
           submitCodexTurn(live)
           return

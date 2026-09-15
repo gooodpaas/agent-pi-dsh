@@ -5,6 +5,8 @@ description: Draft reader-facing research, analysis, due-diligence, and manageme
 
 # Professional Report Writing
 
+For a full research, industry, survey or data-analysis report, load `huashu-report` and its `AGENT-PI-ADAPTATION.md` for the evidence table, visual system and rendering checks. This skill remains the concise editorial guide for management briefs. User-specified report formats take priority.
+
 Write a paper a named reader can act on. The first paragraph must carry the judgment. Evidence follows. Gaps stay gaps.
 
 ## When to use / when not to
