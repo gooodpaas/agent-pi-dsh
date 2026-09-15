@@ -205,6 +205,7 @@ export function registerProfessionalDepth(ctx: any, defineTool: (definition: any
           let value
           if (req.method === 'GET') value = url.searchParams.has('id') ? templates.read(url.searchParams.get('id')) : templates.list()
           else if (req.method === 'POST') {
+            req.setEncoding('utf8')
             let body = ''
             for await (const chunk of req) {
               body += chunk
@@ -232,6 +233,7 @@ export function registerProfessionalDepth(ctx: any, defineTool: (definition: any
         if (req.method === 'GET') return send(200, depthState(session))
         if (req.method !== 'POST') return send(405, { error: 'method not allowed' })
         try {
+          req.setEncoding('utf8')
           let body = ''
           for await (const chunk of req) {
             body += chunk

@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { Readable } from 'node:stream'
 import { admitDepthMessages, bindDepthStore, checkDepth, depthCommand, depthContext, depthState, registerProfessionalDepth, updateDepth } from '../src/professional-depth.ts'
 import { createDepthStore } from '../src/professional-depth-store.mjs'
 import { zipStore } from '../src/xlsx-zip.ts'
@@ -164,4 +165,22 @@ test('preferences restore only the same session; templates require manual select
   updateDepth(reopened, { action: 'template', template: null, revision: 2 }, 'user')
   assert.equal(depthState(reopened).template, undefined)
   assert.equal(s.snapshotEvents().length, 0)
+})
+
+test('manual template HTTP save preserves Chinese characters split across request chunks', async (t) => {
+  const home = mkdtempSync(join(tmpdir(), 'depth-template-http-'))
+  const previous = process.env.DSH_HOME
+  process.env.DSH_HOME = home
+  t.after(() => { if (previous === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = previous; rmSync(home, { recursive: true, force: true }) })
+  const routes = new Map<string, any>()
+  registerProfessionalDepth({ inject: (_deps: any, fn: any) => fn({ webServer: { register: (route: any) => routes.set(route.path, route.handler) } }), tools: { register() {} }, on() {}, get() {} }, value => value)
+  const content = '工程报告资料与验收要求。'.repeat(1000)
+  const bytes = Buffer.from(JSON.stringify({ title: '中文模板', content }))
+  const request: any = Readable.from([...bytes].map(byte => Buffer.from([byte])))
+  request.method = 'POST'; request.url = '/api/agent-pi/professional-depth/templates'
+  let status: number, result: any
+  await routes.get(request.url)(request, { writeHead: (value: number) => { status = value }, end: (value: string) => { result = JSON.parse(value) } })
+  assert.equal(status!, 200)
+  assert.equal(result.title, '中文模板')
+  assert.equal(result.content, '# 中文模板\n\n' + content + '\n')
 })
